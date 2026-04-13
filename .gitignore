@@ -1,0 +1,9 @@
+.env
+.DS_Store
+credentials.json
+token.json
+token.pickle
+__pycache__/
+*.pyc
+input_videos/
+temp_audio/

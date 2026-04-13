@@ -1,0 +1,7 @@
+openai-whisper
+google-auth
+google-auth-oauthlib
+google-api-python-client
+python-dotenv
+anthropic
+flask
