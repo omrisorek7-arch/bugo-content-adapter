@@ -163,6 +163,20 @@
     animation: spin 0.6s linear infinite; vertical-align: middle; margin-left: 6px;
   }
   .hidden { display: none !important; }
+
+  /* Tabs */
+  .tabs {
+    display: flex; gap: 8px; justify-content: center; margin-bottom: 32px;
+  }
+  .tab-btn {
+    padding: 10px 24px; background: #fff; color: #0266FE;
+    border: 2px solid #0266FE; border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  }
+  .tab-btn:hover { background: #f0f6ff; }
+  .tab-btn.active { background: #0266FE; color: #fff; }
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
 </style>
 </head>
 <body>
@@ -172,6 +186,13 @@
     <h1><span>Bugo</span> Content Adapter</h1>
     <p>גרור סרטוני מתחרים &larr; ערוך &larr; אשר והעלה לדרייב</p>
   </div>
+
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="indoor">באגו פנים</button>
+    <button class="tab-btn" data-tab="outdoor">באגו חוץ</button>
+  </div>
+
+  <div id="tab-indoor" class="tab-panel active">
 
   <!-- Upload Section -->
   <div id="upload-section">
@@ -197,6 +218,38 @@
   </div>
 
   <button class="reset-btn hidden" id="reset-btn">עבד סרטון נוסף</button>
+
+  </div> <!-- end #tab-indoor -->
+
+  <div id="tab-outdoor" class="tab-panel">
+
+    <!-- Upload Section (Outdoor) -->
+    <div id="upload-section-outdoor">
+      <div class="drop-zone" id="drop-zone-outdoor">
+        <div class="drop-zone-icon">🌿</div>
+        <div class="drop-zone-text">גרור סרטונים לכאן</div>
+        <div class="drop-zone-hint">MP4, MOV, AVI, MKV &bull; אפשר כמה סרטונים בבת אחת</div>
+        <input type="file" id="file-input-outdoor" multiple accept=".mp4,.mov,.avi,.mkv">
+      </div>
+      <div class="file-list" id="file-list-outdoor"></div>
+      <button class="start-btn hidden" id="start-btn-outdoor">התחל עיבוד</button>
+    </div>
+
+    <!-- Progress Section (Outdoor) -->
+    <div id="progress-section-outdoor" class="progress-section hidden">
+      <div class="drop-zone mini" id="mini-drop-zone-outdoor">
+        <div class="drop-zone-icon">➕</div>
+        <div class="drop-zone-text">גרור סרטון נוסף בזמן העיבוד</div>
+        <div class="drop-zone-hint">הסרטון יתווסף לתור</div>
+        <input type="file" id="mini-file-input-outdoor" multiple accept=".mp4,.mov,.avi,.mkv">
+      </div>
+      <div id="cards-container-outdoor"></div>
+    </div>
+
+    <button class="reset-btn hidden" id="reset-btn-outdoor">עבד סרטון נוסף</button>
+
+  </div> <!-- end #tab-outdoor -->
+
 </div>
 
 <script>
@@ -564,6 +617,323 @@ resetBtn.addEventListener('click', () => {
   startBtn.classList.add('hidden');
   startBtn.disabled = false;
 });
+
+/* =====================================================================
+   Tab Switcher — toggles between indoor / outdoor panels
+   ===================================================================== */
+document.querySelectorAll('.tab-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const tab = btn.dataset.tab;
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b === btn));
+    document.querySelectorAll('.tab-panel').forEach(p => {
+      p.classList.toggle('active', p.id === 'tab-' + tab);
+    });
+  });
+});
+
+/* =====================================================================
+   OUTDOOR pipeline — fully isolated in an IIFE.
+   Internal identifiers can reuse indoor names without collision.
+   Inline-onclick handlers reference `bugoOutdoor.*` (exposed at bottom).
+   ===================================================================== */
+(function() {
+  const ALLOWED = new Set(['mp4','mov','avi','mkv']);
+  let selectedFiles = [];
+  let pendingFiles = [];
+  let isProcessing = false;
+  let currentJobId = null;
+
+  const dropZone     = document.getElementById('drop-zone-outdoor');
+  const fileInput    = document.getElementById('file-input-outdoor');
+  const fileList     = document.getElementById('file-list-outdoor');
+  const startBtn     = document.getElementById('start-btn-outdoor');
+  const uploadSec    = document.getElementById('upload-section-outdoor');
+  const progressSec  = document.getElementById('progress-section-outdoor');
+  const cardsContainer = document.getElementById('cards-container-outdoor');
+  const resetBtn     = document.getElementById('reset-btn-outdoor');
+  const miniDropZone = document.getElementById('mini-drop-zone-outdoor');
+  const miniFileInput = document.getElementById('mini-file-input-outdoor');
+
+  /* ---- Drag & Drop ---- */
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+  miniDropZone.addEventListener('dragover', e => { e.preventDefault(); miniDropZone.classList.add('dragover'); });
+  miniDropZone.addEventListener('dragleave', () => miniDropZone.classList.remove('dragover'));
+  miniDropZone.addEventListener('drop', e => { e.preventDefault(); miniDropZone.classList.remove('dragover'); addPendingFiles(e.dataTransfer.files); });
+  miniFileInput.addEventListener('change', () => { addPendingFiles(miniFileInput.files); miniFileInput.value = ''; });
+
+  function addFiles(files) {
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ALLOWED.has(ext)) continue;
+      if (selectedFiles.some(s => s.name === f.name && s.size === f.size)) continue;
+      selectedFiles.push(f);
+    }
+    renderFileList();
+  }
+  function addPendingFiles(files) {
+    let added = false;
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ALLOWED.has(ext)) continue;
+      pendingFiles.push(f);
+      addCardForFile(f.name);
+      added = true;
+    }
+    if (added && !isProcessing) processPendingFiles();
+  }
+  function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
+  function renderFileList() {
+    fileList.innerHTML = '';
+    selectedFiles.forEach((f, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+      chip.innerHTML = `<span>🎥 ${f.name} (${sizeMB} MB)</span><button class="remove" onclick="bugoOutdoor.removeFile(${i})">&times;</button>`;
+      fileList.appendChild(chip);
+    });
+    startBtn.classList.toggle('hidden', selectedFiles.length === 0);
+  }
+  function addCardForFile(name) {
+    const escaped = CSS.escape(name);
+    const card = document.createElement('div');
+    card.className = 'video-card';
+    card.id = 'card-out-' + escaped;
+    card.innerHTML = `
+      <div class="video-card-header">
+        <span class="video-card-name">🎥 ${name}</span>
+        <span class="video-card-status" id="status-out-${escaped}">ממתין</span>
+      </div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="bar-out-${escaped}"></div></div>
+      <div class="script-results" id="result-out-${escaped}"></div>
+    `;
+    cardsContainer.appendChild(card);
+  }
+
+  /* ---- SSE status handler ---- */
+  function handleStatus(d) {
+    const escaped = CSS.escape(d.video);
+    const statusEl = document.getElementById('status-out-' + escaped);
+    const barEl    = document.getElementById('bar-out-' + escaped);
+    if (!statusEl) return;
+    const map = {
+      'waiting':      { text: 'ממתין',           pct: 0,   cls: '' },
+      'transcribing': { text: 'מתמלל...',        pct: 33,  cls: 'active' },
+      'adapting':     { text: 'מתאים לבאגו...',  pct: 66,  cls: 'active' },
+      'done':         { text: '✓ מוכן לעריכה',    pct: 100, cls: 'done' },
+      'error':        { text: '✗ שגיאה',          pct: 100, cls: 'error' },
+    };
+    const info = map[d.status] || { text: d.status, pct: 0, cls: '' };
+    if (info.cls === 'active') {
+      statusEl.innerHTML = info.text + '<span class="spinner"></span>';
+    } else {
+      statusEl.textContent = info.text;
+    }
+    statusEl.className = 'video-card-status ' + info.cls;
+    barEl.style.width = info.pct + '%';
+    if (info.cls === 'done') barEl.classList.add('done');
+    const card = document.getElementById('card-out-' + escaped);
+    if (d.status === 'done') card.classList.add('done');
+    if (d.status === 'error') card.classList.add('error');
+  }
+
+  /* ---- Build result HTML — NO Drive button for outdoor ---- */
+  function buildResultHtml(d) {
+    let html = '';
+    if (d.error) {
+      html += `<div style="color:#ef4444;margin-top:8px;font-size:14px;">שגיאה: ${escapeHtml(d.error)}</div>`;
+    }
+    if (d.hebrew || d.english) {
+      const uid = 'vidout-' + Math.random().toString(36).slice(2, 8);
+      html += `<div class="lang-columns">`;
+
+      // Hebrew column — EDITABLE
+      html += `<div class="lang-block">`;
+      html += `<div class="lang-label">🇮🇱 עברית <button class="copy-btn" onclick="bugoOutdoor.copyText(this)">📋 העתק</button></div>`;
+      html += `<div class="script-box rtl editable" contenteditable="true" data-lang="he" id="he-${uid}">${escapeHtml(d.hebrew || '')}</div>`;
+      html += `<div class="hooks-section rtl editable" contenteditable="true" id="hooks-he-${uid}">`;
+      html += `<div class="hooks-label" contenteditable="false">הוקים:</div>`;
+      html += escapeHtml(d.hooks_he || '');
+      html += `</div>`;
+      html += `<div class="editable-hint">✏️ ניתן לערוך סקריפט והוקים ישירות</div>`;
+      html += `<button class="retranslate-btn" onclick="bugoOutdoor.retranslate(this, '${uid}')">🔄 תרגם לאנגלית לפי העברית</button>`;
+      html += `</div>`;
+
+      // English column — READ ONLY
+      html += `<div class="lang-block">`;
+      html += `<div class="lang-label">🇺🇸 English <button class="copy-btn" onclick="bugoOutdoor.copyText(this)">📋 Copy</button></div>`;
+      html += `<div class="script-box ltr" data-lang="en" id="en-${uid}">${escapeHtml(d.english || '')}</div>`;
+      html += `<div class="hooks-section ltr" id="hooks-en-${uid}">`;
+      html += `<div class="hooks-label">Hooks:</div>`;
+      html += escapeHtml(d.hooks_en || '');
+      html += `</div>`;
+      html += `</div>`;
+
+      html += `</div>`; // end lang-columns
+      // NOTE: no approve-upload button for outdoor pipeline.
+    }
+    return html;
+  }
+
+  /* ---- Start Processing ---- */
+  startBtn.addEventListener('click', async () => {
+    if (selectedFiles.length === 0) return;
+    startBtn.disabled = true;
+    isProcessing = true;
+
+    const form = new FormData();
+    selectedFiles.forEach(f => form.append('videos', f));
+
+    let jobId;
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!data.job_id) throw new Error(data.error || 'Upload failed');
+      jobId = data.job_id;
+      currentJobId = jobId;
+    } catch (err) {
+      alert('שגיאה בהעלאה: ' + err.message);
+      startBtn.disabled = false;
+      isProcessing = false;
+      return;
+    }
+
+    uploadSec.classList.add('hidden');
+    progressSec.classList.remove('hidden');
+    cardsContainer.innerHTML = '';
+    selectedFiles.forEach(f => addCardForFile(f.name));
+
+    connectSSE(jobId);
+  });
+
+  function connectSSE(jobId) {
+    const evtSrc = new EventSource('/process-outdoor/' + jobId);
+    evtSrc.addEventListener('status', e => handleStatus(JSON.parse(e.data)));
+    evtSrc.addEventListener('result', e => {
+      const d = JSON.parse(e.data);
+      const escaped = CSS.escape(d.video);
+      const resultEl = document.getElementById('result-out-' + escaped);
+      if (!resultEl) return;
+      resultEl.innerHTML = buildResultHtml(d);
+      resultEl.classList.add('visible');
+    });
+    evtSrc.addEventListener('done', () => {
+      evtSrc.close();
+      isProcessing = false;
+      resetBtn.classList.remove('hidden');
+      if (pendingFiles.length > 0) processPendingFiles();
+    });
+    evtSrc.onerror = () => { evtSrc.close(); isProcessing = false; resetBtn.classList.remove('hidden'); };
+  }
+
+  async function processPendingFiles() {
+    if (pendingFiles.length === 0) return;
+    isProcessing = true;
+    resetBtn.classList.add('hidden');
+    const form = new FormData();
+    pendingFiles.forEach(f => form.append('videos', f));
+    pendingFiles = [];
+    let jobId;
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!data.job_id) throw new Error(data.error || 'Upload failed');
+      jobId = data.job_id;
+      currentJobId = jobId;
+    } catch (err) {
+      alert('שגיאה: ' + err.message);
+      isProcessing = false;
+      resetBtn.classList.remove('hidden');
+      return;
+    }
+    connectSSE(jobId);
+  }
+
+  /* ---- Retranslate ---- */
+  async function retranslate(btn, uid) {
+    const heBox = document.getElementById('he-' + uid);
+    const enBox = document.getElementById('en-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    const hooksEnEl = document.getElementById('hooks-en-' + uid);
+    if (!heBox || !enBox) return;
+
+    const hebrewText = heBox.innerText.trim();
+    if (!hebrewText) { alert('אין טקסט עברי לתרגום'); return; }
+
+    const hooksHe = getHooksText(hooksHeEl);
+
+    btn.disabled = true;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '🔄 מתרגם...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/retranslate-outdoor', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hebrew: hebrewText, hooks_he: hooksHe }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      enBox.textContent = data.english;
+      if (data.hooks_en && hooksEnEl) {
+        const label = hooksEnEl.querySelector('.hooks-label');
+        const labelHtml = label ? label.outerHTML : '<div class="hooks-label">Hooks:</div>';
+        hooksEnEl.innerHTML = labelHtml + escapeHtml(data.hooks_en);
+      }
+    } catch (err) {
+      alert('שגיאה בתרגום: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+
+  /* ---- Helpers ---- */
+  function getHooksText(hooksEl) {
+    if (!hooksEl) return '';
+    const parts = [];
+    for (const node of hooksEl.childNodes) {
+      if (node.nodeType === 1 && node.classList && node.classList.contains('hooks-label')) continue;
+      const txt = (node.textContent || '').trim();
+      if (txt) parts.push(txt);
+    }
+    return parts.join('\n').trim();
+  }
+
+  function copyText(btn) {
+    const block = btn.closest('.lang-block');
+    const box = block.querySelector('.script-box');
+    const hooks = block.querySelector('.hooks-section');
+    let text = box.innerText;
+    if (hooks) text += '\n\n' + hooks.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓ הועתק!';
+      setTimeout(() => btn.textContent = orig, 1500);
+    });
+  }
+
+  /* ---- Reset ---- */
+  resetBtn.addEventListener('click', () => {
+    selectedFiles = [];
+    pendingFiles = [];
+    currentJobId = null;
+    fileList.innerHTML = '';
+    cardsContainer.innerHTML = '';
+    progressSec.classList.add('hidden');
+    resetBtn.classList.add('hidden');
+    uploadSec.classList.remove('hidden');
+    startBtn.classList.add('hidden');
+    startBtn.disabled = false;
+  });
+
+  /* Expose handlers used by inline onclick attributes */
+  window.bugoOutdoor = { addFiles, removeFile, copyText, retranslate };
+})();
 </script>
 </body>
 </html>

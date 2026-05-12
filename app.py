@@ -11,6 +11,7 @@ from flask import Flask, Response, jsonify, render_template, request
 load_dotenv(Path(__file__).parent / ".env", override=True)
 
 from adapt import adapt_script
+from adapt_outdoor import adapt_script_outdoor
 from drive_upload import upload_to_drive
 from transcribe import transcribe
 
@@ -209,6 +210,117 @@ def approve_upload():
             "video_file_id": result["video_file_id"],
             "video_folder_id": video_folder_id,
         })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/process-outdoor/<job_id>")
+def process_outdoor(job_id):
+    """SSE endpoint for the OUTDOOR pipeline: transcribe + adapt with the outdoor brand."""
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+
+    def generate():
+        tmp_dir = job["dir"]
+        files = job["files"]
+
+        for filename in files:
+            video_path = os.path.join(tmp_dir, filename)
+
+            def send_status(status):
+                return f"event: status\ndata: {json.dumps({'video': filename, 'status': status})}\n\n"
+
+            yield send_status("transcribing")
+
+            try:
+                result = transcribe(video_path)
+                transcript_text = result["text"]
+                language = result["language"]
+            except Exception as e:
+                yield send_status("error")
+                yield f"event: result\ndata: {json.dumps({'video': filename, 'error': f'Transcription failed: {e}'})}\n\n"
+                continue
+
+            yield send_status("adapting")
+            try:
+                script_data = adapt_script_outdoor(transcript_text, language)
+            except Exception as e:
+                yield send_status("error")
+                yield f"event: result\ndata: {json.dumps({'video': filename, 'error': f'Adaptation failed: {e}'})}\n\n"
+                continue
+
+            yield send_status("done")
+            result_data = {
+                "video": filename,
+                "hebrew": script_data.get("hebrew", ""),
+                "hooks_he": script_data.get("hooks_he", ""),
+                "english": script_data.get("english", ""),
+                "hooks_en": script_data.get("hooks_en", ""),
+                "job_id": job_id,
+            }
+            yield f"event: result\ndata: {json.dumps(result_data, ensure_ascii=False)}\n\n"
+
+        yield "event: done\ndata: {}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/retranslate-outdoor", methods=["POST"])
+def retranslate_outdoor():
+    """Take edited Hebrew script + hooks (outdoor) and re-translate both to English."""
+    data = request.get_json() or {}
+    hebrew_script = data.get("hebrew", "").strip()
+    hebrew_hooks = data.get("hooks_he", "").strip()
+    if not hebrew_script:
+        return jsonify({"error": "No Hebrew text provided"}), 400
+
+    import anthropic
+    try:
+        client = anthropic.Anthropic()
+
+        prompt_parts = [
+            "Here is a Hebrew ad script that has been edited:\n\n",
+            hebrew_script,
+        ]
+        if hebrew_hooks:
+            prompt_parts.append(f"\n\nHebrew hooks:\n{hebrew_hooks}")
+
+        prompt_parts.append(
+            "\n\nTranslate this into natural, fluent US English for the Bugo Outdoor brand. "
+            "Stay as close to the Hebrew as possible — minimal adaptation, just an accurate "
+            "idiomatic translation. Keep the same structure, tone, and emotional beats. "
+            "Do not rewrite or embellish.\n\n"
+        )
+
+        if hebrew_hooks:
+            prompt_parts.append(
+                "Return the English script first, then on a new line write ---HOOKS--- "
+                "and then the English hooks (numbered).\n"
+                "Translate ALL hooks exactly - same number as in the Hebrew, no more no less.\n"
+                "No explanations, just the script and hooks."
+            )
+        else:
+            prompt_parts.append("Return only the English script, no explanations.")
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            system="You are a copywriter for Bugo Outdoor, a solar-powered ground-vibration pest repeller for snakes, mice, rats and outdoor pests.",
+            messages=[{"role": "user", "content": "".join(prompt_parts)}],
+        )
+
+        raw = message.content[0].text.strip()
+
+        if hebrew_hooks and "---HOOKS---" in raw:
+            parts = raw.split("---HOOKS---", 1)
+            return jsonify({
+                "english": parts[0].strip(),
+                "hooks_en": parts[1].strip(),
+            })
+        else:
+            return jsonify({"english": raw, "hooks_en": ""})
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 

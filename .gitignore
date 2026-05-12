@@ -1,9 +1,44 @@
+# env / secrets
 .env
-.DS_Store
+.env.local
+.env*.local
 credentials.json
 token.json
 token.pickle
+
+# python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+*.egg-info/
+build/
+dist/
+venv/
+.venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# misc
+.DS_Store
+._*
+Thumbs.db
+
+# debug & logs
+*.log
+*.lcov
+
+# IDEs / editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# claude code working folders
+/claude
+.claude
+
+# local uploads / working files
 input_videos/
 temp_audio/
