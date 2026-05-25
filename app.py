@@ -14,6 +14,15 @@ from adapt import adapt_script
 from adapt_outdoor import adapt_script_outdoor
 from drive_upload import upload_to_drive
 from transcribe import transcribe
+from replicator import (
+    BRAND_OVERRIDES,
+    build_hooks_block,
+    generate_extra_hooks,
+    get_profiles,
+    overrides_instructions_en,
+    split_hook_and_body,
+    translate_literal_to_hebrew,
+)
 
 app = Flask(__name__)
 
@@ -325,9 +334,259 @@ def retranslate_outdoor():
         return jsonify({"error": str(e)}), 500
 
 
+# =========================================================================
+# REPLICATOR ROUTES — isolated from Indoor/Outdoor flows
+# =========================================================================
+
+@app.route("/process-replicator/<job_id>")
+def process_replicator(job_id):
+    """SSE endpoint: transcribe → literal Hebrew translation → 4 fact-grounded hooks."""
+    job = _jobs.get(job_id)
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
+
+    def generate():
+        tmp_dir = job["dir"]
+        files = job["files"]
+
+        for filename in files:
+            video_path = os.path.join(tmp_dir, filename)
+
+            def send_status(status):
+                return f"event: status\ndata: {json.dumps({'video': filename, 'status': status})}\n\n"
+
+            yield send_status("transcribing")
+            try:
+                result = transcribe(video_path)
+                transcript_text = result["text"]
+                language = result["language"]
+            except Exception as e:
+                yield send_status("error")
+                yield f"event: result\ndata: {json.dumps({'video': filename, 'error': f'Transcription failed: {e}'})}\n\n"
+                continue
+
+            yield send_status("translating")
+            try:
+                hebrew = translate_literal_to_hebrew(transcript_text, language)
+            except Exception as e:
+                yield send_status("error")
+                yield f"event: result\ndata: {json.dumps({'video': filename, 'error': f'Translation failed: {e}'})}\n\n"
+                continue
+
+            yield send_status("generating-hooks")
+            try:
+                original_hook, body = split_hook_and_body(hebrew)
+                extras = generate_extra_hooks(original_hook, body)
+                hooks_he = build_hooks_block(original_hook, extras)
+            except Exception as e:
+                # Hook generation failure is non-fatal — keep the Hebrew, hooks empty.
+                print(f"  Hook generation failed for {filename}: {e}")
+                hooks_he = ""
+
+            yield send_status("done")
+            result_data = {
+                "video": filename,
+                "hebrew": hebrew,
+                "hooks_he": hooks_he,
+                "english": "",
+                "hooks_en": "",
+                "job_id": job_id,
+            }
+            yield f"event: result\ndata: {json.dumps(result_data, ensure_ascii=False)}\n\n"
+
+        yield "event: done\ndata: {}\n\n"
+
+    return Response(generate(), mimetype="text/event-stream")
+
+
+@app.route("/regenerate-extra-hooks/<job_id>", methods=["POST"])
+def regenerate_extra_hooks(job_id):
+    """Re-roll the 4 alternative hooks against the user's currently-edited Hebrew."""
+    data = request.get_json() or {}
+    hebrew = data.get("hebrew", "").strip()
+    if not hebrew:
+        return jsonify({"error": "No Hebrew text provided"}), 400
+
+    try:
+        original_hook, body = split_hook_and_body(hebrew)
+        extras = generate_extra_hooks(original_hook, body)
+        hooks_he = build_hooks_block(original_hook, extras)
+        return jsonify({"hooks_he": hooks_he})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/retranslate-replicator", methods=["POST"])
+def retranslate_replicator():
+    """Take edited Hebrew script + hooks and re-translate both to English (literal)."""
+    data = request.get_json() or {}
+    hebrew_script = data.get("hebrew", "").strip()
+    hebrew_hooks = data.get("hooks_he", "").strip()
+    if not hebrew_script:
+        return jsonify({"error": "No Hebrew text provided"}), 400
+
+    import anthropic
+    try:
+        client = anthropic.Anthropic()
+
+        overrides_en = overrides_instructions_en()
+
+        prompt_parts = [
+            "Here is a Hebrew video script to translate:\n\n",
+            hebrew_script,
+        ]
+        if hebrew_hooks:
+            prompt_parts.append(f"\n\nHebrew hooks:\n{hebrew_hooks}")
+
+        prompt_parts.append(
+            "\n\nTranslate this into natural, fluent US English. "
+            "Stay as close to the Hebrew as possible — minimal adaptation, just an accurate "
+            "idiomatic translation. Keep the same structure, tone, and emotional beats. "
+            "Do not rewrite or embellish.\n\n"
+            f"Apply these brand substitutions exactly:\n{overrides_en}\n\n"
+        )
+
+        if hebrew_hooks:
+            prompt_parts.append(
+                "Return the English script first, then on a new line write ---HOOKS--- "
+                "and then the English hooks (numbered).\n"
+                "Translate ALL hooks exactly — same number as in the Hebrew, no more no less.\n"
+                "No explanations, just the script and hooks."
+            )
+        else:
+            prompt_parts.append("Return only the English script, no explanations.")
+
+        message = client.messages.create(
+            model="claude-sonnet-4-20250514",
+            max_tokens=4096,
+            system=(
+                "You are a translator. Translate Hebrew video scripts into natural, "
+                "fluent US English. No brand voice — render exactly what the Hebrew says."
+            ),
+            messages=[{"role": "user", "content": "".join(prompt_parts)}],
+        )
+
+        raw = message.content[0].text.strip()
+        if hebrew_hooks and "---HOOKS---" in raw:
+            parts = raw.split("---HOOKS---", 1)
+            return jsonify({"english": parts[0].strip(), "hooks_en": parts[1].strip()})
+        return jsonify({"english": raw, "hooks_en": ""})
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/approve-upload-with-profile", methods=["POST"])
+def approve_upload_with_profile():
+    """Shared profile-aware upload for Indoor and Outdoor tabs.
+    Logic mirrors /approve-upload-replicator. Existing /approve-upload route
+    is left untouched for backward compatibility."""
+    data = request.get_json() or {}
+
+    job_id = data.get("job_id", "")
+    filename = data.get("video", "")
+    profile_key = (data.get("profile") or "").strip().lower()
+
+    profiles = get_profiles()
+    if profile_key not in profiles:
+        return jsonify({"error": "יש לבחור פרופיל (עידו / הדר) לפני ההעלאה"}), 400
+
+    profile = profiles[profile_key]
+    profile_label = profile["label_he"]
+    doc_id = profile["doc_id"]
+    folder_id = profile["folder_id"]
+
+    if not doc_id:
+        return jsonify({"error": f"{profile_label} לא הוגדר ב-.env — חסר {profile_key.upper()}_GOOGLE_DOC_ID"}), 500
+    if not folder_id:
+        return jsonify({"error": f"{profile_label} לא הוגדר ב-.env — חסר {profile_key.upper()}_GOOGLE_DRIVE_VIDEO_FOLDER_ID"}), 500
+
+    script_data = {
+        "hebrew": data.get("hebrew", ""),
+        "hooks_he": data.get("hooks_he", ""),
+        "english": data.get("english", ""),
+        "hooks_en": data.get("hooks_en", ""),
+    }
+
+    job = _jobs.get(job_id)
+    video_path = None
+    if job:
+        candidate = os.path.join(job["dir"], filename)
+        if os.path.exists(candidate):
+            video_path = candidate
+    if not video_path:
+        return jsonify({"error": f"Video file not found: {filename}"}), 404
+
+    try:
+        result = upload_to_drive(video_path, script_data, doc_id, folder_id)
+        return jsonify({
+            "success": True,
+            "profile": profile_key,
+            "doc_id": result["doc_id"],
+            "video_file_id": result["video_file_id"],
+            "video_folder_id": folder_id,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/approve-upload-replicator", methods=["POST"])
+def approve_upload_replicator():
+    """Profile-aware upload: routes the video+script to Ido's or Hadar's Drive destination."""
+    data = request.get_json() or {}
+
+    job_id = data.get("job_id", "")
+    filename = data.get("video", "")
+    profile_key = (data.get("profile") or "").strip().lower()
+
+    profiles = get_profiles()
+    if profile_key not in profiles:
+        return jsonify({"error": "יש לבחור פרופיל (עידו / הדר) לפני ההעלאה"}), 400
+
+    profile = profiles[profile_key]
+    profile_label = profile["label_he"]
+    doc_id = profile["doc_id"]
+    folder_id = profile["folder_id"]
+
+    if not doc_id:
+        return jsonify({"error": f"{profile_label} לא הוגדר ב-.env — חסר {profile_key.upper()}_GOOGLE_DOC_ID"}), 500
+    if not folder_id:
+        return jsonify({"error": f"{profile_label} לא הוגדר ב-.env — חסר {profile_key.upper()}_GOOGLE_DRIVE_VIDEO_FOLDER_ID"}), 500
+
+    script_data = {
+        "hebrew": data.get("hebrew", ""),
+        "hooks_he": data.get("hooks_he", ""),
+        "english": data.get("english", ""),
+        "hooks_en": data.get("hooks_en", ""),
+    }
+
+    job = _jobs.get(job_id)
+    video_path = None
+    if job:
+        candidate = os.path.join(job["dir"], filename)
+        if os.path.exists(candidate):
+            video_path = candidate
+    if not video_path:
+        return jsonify({"error": f"Video file not found: {filename}"}), 404
+
+    try:
+        result = upload_to_drive(video_path, script_data, doc_id, folder_id)
+        return jsonify({
+            "success": True,
+            "profile": profile_key,
+            "doc_id": result["doc_id"],
+            "video_file_id": result["video_file_id"],
+            "video_folder_id": folder_id,
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
 if __name__ == "__main__":
+    port = int(os.environ.get("PORT", "5001"))
     print("=" * 50)
     print("  Bugo Content Adapter")
-    print("  http://localhost:5000")
+    print(f"  http://localhost:{port}")
     print("=" * 50)
-    app.run(debug=False, port=5000, threaded=True)
+    # Port 5001 by default — macOS AirPlay Receiver grabs 5000 and returns 403.
+    app.run(debug=False, port=port, threaded=True)

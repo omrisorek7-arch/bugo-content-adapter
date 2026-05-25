@@ -177,6 +177,30 @@
   .tab-btn.active { background: #0266FE; color: #fff; }
   .tab-panel { display: none; }
   .tab-panel.active { display: block; }
+
+  /* Profile picker (Replicator tab only) */
+  .profile-picker {
+    display: flex; gap: 12px; align-items: center; justify-content: center;
+    margin-bottom: 20px; padding: 14px; background: #faf7ff;
+    border: 1px solid #e9d8fd; border-radius: 12px;
+  }
+  .profile-picker-label { font-weight: 600; font-size: 14px; color: #444; }
+  .profile-radio {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border: 2px solid #d8c4f8; border-radius: 10px;
+    background: #fff; cursor: pointer; font-size: 14px; font-weight: 600;
+    color: #6b46c1; transition: all 0.2s;
+  }
+  .profile-radio input { margin: 0; cursor: pointer; }
+  .profile-radio:has(input:checked) { background: #6b46c1; color: #fff; border-color: #6b46c1; }
+  .regen-hooks-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    margin-top: 8px; padding: 6px 12px;
+    background: #fff; color: #6b46c1; border: 1.5px solid #6b46c1;
+    border-radius: 8px; font-size: 12px; font-weight: 600; cursor: pointer; transition: all 0.2s;
+  }
+  .regen-hooks-btn:hover { background: #f5efff; }
+  .regen-hooks-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 </style>
 </head>
 <body>
@@ -190,9 +214,20 @@
   <div class="tabs">
     <button class="tab-btn active" data-tab="indoor">באגו פנים</button>
     <button class="tab-btn" data-tab="outdoor">באגו חוץ</button>
+    <button class="tab-btn" data-tab="replicator">רפליקיטור</button>
   </div>
 
   <div id="tab-indoor" class="tab-panel active">
+
+  <div class="profile-picker">
+    <span class="profile-picker-label">העלאה לדרייב של:</span>
+    <label class="profile-radio">
+      <input type="radio" name="indoor-profile" value="ido"> עידו
+    </label>
+    <label class="profile-radio">
+      <input type="radio" name="indoor-profile" value="hadar"> הדר
+    </label>
+  </div>
 
   <!-- Upload Section -->
   <div id="upload-section">
@@ -223,6 +258,16 @@
 
   <div id="tab-outdoor" class="tab-panel">
 
+    <div class="profile-picker">
+      <span class="profile-picker-label">העלאה לדרייב של:</span>
+      <label class="profile-radio">
+        <input type="radio" name="outdoor-profile" value="ido"> עידו
+      </label>
+      <label class="profile-radio">
+        <input type="radio" name="outdoor-profile" value="hadar"> הדר
+      </label>
+    </div>
+
     <!-- Upload Section (Outdoor) -->
     <div id="upload-section-outdoor">
       <div class="drop-zone" id="drop-zone-outdoor">
@@ -250,6 +295,43 @@
 
   </div> <!-- end #tab-outdoor -->
 
+  <div id="tab-replicator" class="tab-panel">
+
+    <div class="profile-picker">
+      <span class="profile-picker-label">העלאה לדרייב של:</span>
+      <label class="profile-radio">
+        <input type="radio" name="replicator-profile" value="ido"> עידו
+      </label>
+      <label class="profile-radio">
+        <input type="radio" name="replicator-profile" value="hadar"> הדר
+      </label>
+    </div>
+
+    <div id="upload-section-replicator">
+      <div class="drop-zone" id="drop-zone-replicator">
+        <div class="drop-zone-icon">🪞</div>
+        <div class="drop-zone-text">גרור סרטוני PestLab לכאן</div>
+        <div class="drop-zone-hint">תרגום 1:1 לעברית, ללא התאמה למותג &bull; MP4, MOV, AVI, MKV</div>
+        <input type="file" id="file-input-replicator" multiple accept=".mp4,.mov,.avi,.mkv">
+      </div>
+      <div class="file-list" id="file-list-replicator"></div>
+      <button class="start-btn hidden" id="start-btn-replicator">התחל עיבוד</button>
+    </div>
+
+    <div id="progress-section-replicator" class="progress-section hidden">
+      <div class="drop-zone mini" id="mini-drop-zone-replicator">
+        <div class="drop-zone-icon">➕</div>
+        <div class="drop-zone-text">גרור סרטון נוסף בזמן העיבוד</div>
+        <div class="drop-zone-hint">הסרטון יתווסף לתור</div>
+        <input type="file" id="mini-file-input-replicator" multiple accept=".mp4,.mov,.avi,.mkv">
+      </div>
+      <div id="cards-container-replicator"></div>
+    </div>
+
+    <button class="reset-btn hidden" id="reset-btn-replicator">עבד סרטון נוסף</button>
+
+  </div> <!-- end #tab-replicator -->
+
 </div>
 
 <script>
@@ -269,6 +351,20 @@ const cardsContainer = document.getElementById('cards-container');
 const resetBtn     = document.getElementById('reset-btn');
 const miniDropZone = document.getElementById('mini-drop-zone');
 const miniFileInput = document.getElementById('mini-file-input');
+
+function getIndoorProfile() {
+  const c = document.querySelector('input[name="indoor-profile"]:checked');
+  return c ? c.value : '';
+}
+function updateIndoorStartEnabled() {
+  const p = getIndoorProfile();
+  if (selectedFiles.length === 0) return;
+  startBtn.disabled = !p;
+  startBtn.title = p ? '' : 'בחר עידו או הדר לפני התחלת עיבוד';
+}
+document.querySelectorAll('input[name="indoor-profile"]').forEach(r => {
+  r.addEventListener('change', updateIndoorStartEnabled);
+});
 
 /* ---- Drag & Drop ---- */
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
@@ -314,7 +410,9 @@ function renderFileList() {
     chip.innerHTML = `<span>🎥 ${f.name} (${sizeMB} MB)</span><button class="remove" onclick="removeFile(${i})">&times;</button>`;
     fileList.appendChild(chip);
   });
-  startBtn.classList.toggle('hidden', selectedFiles.length === 0);
+  const hasFiles = selectedFiles.length > 0;
+  startBtn.classList.toggle('hidden', !hasFiles);
+  if (hasFiles) updateIndoorStartEnabled();
 }
 function addCardForFile(name) {
   const escaped = CSS.escape(name);
@@ -405,6 +503,7 @@ function buildResultHtml(d) {
 /* ---- Start Processing ---- */
 startBtn.addEventListener('click', async () => {
   if (selectedFiles.length === 0) return;
+  if (!getIndoorProfile()) { alert('בחר פרופיל (עידו / הדר) לפני התחלת עיבוד'); return; }
   startBtn.disabled = true;
   isProcessing = true;
 
@@ -476,13 +575,19 @@ async function processPendingFiles() {
   connectSSE(jobId);
 }
 
-/* ---- Approve & Upload to Drive ---- */
+/* ---- Approve & Upload to Drive (profile-aware) ---- */
 async function approveUpload(btn, uid, videoName, jobId) {
   const heBox = document.getElementById('he-' + uid);
   const enBox = document.getElementById('en-' + uid);
   const hooksHeEl = document.getElementById('hooks-he-' + uid);
   const hooksEnEl = document.getElementById('hooks-en-' + uid);
   const statusDiv = document.getElementById('upload-status-' + uid);
+
+  const profile = getIndoorProfile();
+  if (!profile) {
+    statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל (עידו / הדר) לפני ההעלאה</div>`;
+    return;
+  }
 
   // Get current (possibly edited) content
   const hebrew = heBox ? heBox.innerText.trim() : '';
@@ -496,12 +601,13 @@ async function approveUpload(btn, uid, videoName, jobId) {
   btn.innerHTML = '⏳ מעלה לדרייב...<span class="spinner"></span>';
 
   try {
-    const res = await fetch('/approve-upload', {
+    const res = await fetch('/approve-upload-with-profile', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         job_id: jobId,
         video: videoName,
+        profile,
         hebrew, hooks_he: hooksHe,
         english, hooks_en: hooksEn,
       }),
@@ -514,7 +620,7 @@ async function approveUpload(btn, uid, videoName, jobId) {
     const folderUrl = `https://drive.google.com/drive/folders/${data.video_folder_id}`;
     statusDiv.innerHTML = `
       <div class="upload-success">
-        ✅ הועלה בהצלחה!
+        ✅ הועלה בהצלחה לפרופיל ${profile === 'ido' ? 'עידו' : 'הדר'}!
         <a href="${docUrl}" target="_blank">📄 פתח מסמך</a>
         &nbsp;|&nbsp;
         <a href="${folderUrl}" target="_blank">📁 תיקיית סרטונים</a>
@@ -654,6 +760,20 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   const miniDropZone = document.getElementById('mini-drop-zone-outdoor');
   const miniFileInput = document.getElementById('mini-file-input-outdoor');
 
+  function getOutdoorProfile() {
+    const c = document.querySelector('input[name="outdoor-profile"]:checked');
+    return c ? c.value : '';
+  }
+  function updateOutdoorStartEnabled() {
+    const p = getOutdoorProfile();
+    if (selectedFiles.length === 0) return;
+    startBtn.disabled = !p;
+    startBtn.title = p ? '' : 'בחר עידו או הדר לפני התחלת עיבוד';
+  }
+  document.querySelectorAll('input[name="outdoor-profile"]').forEach(r => {
+    r.addEventListener('change', updateOutdoorStartEnabled);
+  });
+
   /* ---- Drag & Drop ---- */
   dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
   dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
@@ -695,7 +815,9 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       chip.innerHTML = `<span>🎥 ${f.name} (${sizeMB} MB)</span><button class="remove" onclick="bugoOutdoor.removeFile(${i})">&times;</button>`;
       fileList.appendChild(chip);
     });
-    startBtn.classList.toggle('hidden', selectedFiles.length === 0);
+    const hasFiles = selectedFiles.length > 0;
+    startBtn.classList.toggle('hidden', !hasFiles);
+    if (hasFiles) updateOutdoorStartEnabled();
   }
   function addCardForFile(name) {
     const escaped = CSS.escape(name);
@@ -773,7 +895,11 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       html += `</div>`;
 
       html += `</div>`; // end lang-columns
-      // NOTE: no approve-upload button for outdoor pipeline.
+
+      html += `<button class="approve-btn" id="approve-${uid}" `
+           +  `onclick="bugoOutdoor.approveUpload(this, '${uid}', '${escapeAttr(d.video)}', '${escapeAttr(d.job_id || currentJobId)}')">`;
+      html += `✅ אשר והעלה לדרייב</button>`;
+      html += `<div id="upload-status-${uid}"></div>`;
     }
     return html;
   }
@@ -781,6 +907,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   /* ---- Start Processing ---- */
   startBtn.addEventListener('click', async () => {
     if (selectedFiles.length === 0) return;
+    if (!getOutdoorProfile()) { alert('בחר פרופיל (עידו / הדר) לפני התחלת עיבוד'); return; }
     startBtn.disabled = true;
     isProcessing = true;
 
@@ -892,6 +1019,61 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     }
   }
 
+  /* ---- Approve & Upload (profile-aware) ---- */
+  async function approveUpload(btn, uid, videoName, jobId) {
+    const heBox = document.getElementById('he-' + uid);
+    const enBox = document.getElementById('en-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    const hooksEnEl = document.getElementById('hooks-en-' + uid);
+    const statusDiv = document.getElementById('upload-status-' + uid);
+
+    const profile = getOutdoorProfile();
+    if (!profile) {
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל (עידו / הדר) לפני ההעלאה</div>`;
+      return;
+    }
+
+    const hebrew = heBox ? heBox.innerText.trim() : '';
+    const english = enBox ? enBox.innerText.trim() : '';
+    const hooksHe = getHooksText(hooksHeEl);
+    const hooksEn = getHooksText(hooksEnEl);
+
+    btn.disabled = true;
+    btn.innerHTML = '⏳ מעלה לדרייב...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/approve-upload-with-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: jobId, video: videoName, profile,
+          hebrew, hooks_he: hooksHe, english, hooks_en: hooksEn,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      btn.style.display = 'none';
+      const docUrl = `https://docs.google.com/document/d/${data.doc_id}/edit`;
+      const folderUrl = `https://drive.google.com/drive/folders/${data.video_folder_id}`;
+      statusDiv.innerHTML = `
+        <div class="upload-success">
+          ✅ הועלה בהצלחה לפרופיל ${profile === 'ido' ? 'עידו' : 'הדר'}!
+          <a href="${docUrl}" target="_blank">📄 פתח מסמך</a>
+          &nbsp;|&nbsp;
+          <a href="${folderUrl}" target="_blank">📁 תיקיית סרטונים</a>
+        </div>`;
+
+      const card = btn.closest('.video-card');
+      if (card) { card.classList.remove('done'); card.classList.add('uploaded'); }
+
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = '✅ אשר והעלה לדרייב';
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">שגיאה: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
   /* ---- Helpers ---- */
   function getHooksText(hooksEl) {
     if (!hooksEl) return '';
@@ -932,7 +1114,419 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 
   /* Expose handlers used by inline onclick attributes */
-  window.bugoOutdoor = { addFiles, removeFile, copyText, retranslate };
+  window.bugoOutdoor = { addFiles, removeFile, copyText, retranslate, approveUpload };
+})();
+
+/* =====================================================================
+   REPLICATOR pipeline — isolated IIFE.
+   Profile picker (Ido/Hadar), 5 hooks (1 original + 4 alternatives),
+   regenerate-hooks button, profile-aware upload.
+   ===================================================================== */
+(function() {
+  const ALLOWED = new Set(['mp4','mov','avi','mkv']);
+  let selectedFiles = [];
+  let pendingFiles = [];
+  let isProcessing = false;
+  let currentJobId = null;
+
+  const dropZone     = document.getElementById('drop-zone-replicator');
+  const fileInput    = document.getElementById('file-input-replicator');
+  const fileList     = document.getElementById('file-list-replicator');
+  const startBtn     = document.getElementById('start-btn-replicator');
+  const uploadSec    = document.getElementById('upload-section-replicator');
+  const progressSec  = document.getElementById('progress-section-replicator');
+  const cardsContainer = document.getElementById('cards-container-replicator');
+  const resetBtn     = document.getElementById('reset-btn-replicator');
+  const miniDropZone = document.getElementById('mini-drop-zone-replicator');
+  const miniFileInput = document.getElementById('mini-file-input-replicator');
+
+  function getSelectedProfile() {
+    const checked = document.querySelector('input[name="replicator-profile"]:checked');
+    return checked ? checked.value : '';
+  }
+  function updateStartButtonEnabled() {
+    const profile = getSelectedProfile();
+    startBtn.disabled = !profile;
+    startBtn.title = profile ? '' : 'בחר עידו או הדר לפני התחלת עיבוד';
+  }
+  document.querySelectorAll('input[name="replicator-profile"]').forEach(r => {
+    r.addEventListener('change', updateStartButtonEnabled);
+  });
+
+  /* ---- Drag & Drop ---- */
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+  miniDropZone.addEventListener('dragover', e => { e.preventDefault(); miniDropZone.classList.add('dragover'); });
+  miniDropZone.addEventListener('dragleave', () => miniDropZone.classList.remove('dragover'));
+  miniDropZone.addEventListener('drop', e => { e.preventDefault(); miniDropZone.classList.remove('dragover'); addPendingFiles(e.dataTransfer.files); });
+  miniFileInput.addEventListener('change', () => { addPendingFiles(miniFileInput.files); miniFileInput.value = ''; });
+
+  function addFiles(files) {
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ALLOWED.has(ext)) continue;
+      if (selectedFiles.some(s => s.name === f.name && s.size === f.size)) continue;
+      selectedFiles.push(f);
+    }
+    renderFileList();
+  }
+  function addPendingFiles(files) {
+    let added = false;
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ALLOWED.has(ext)) continue;
+      pendingFiles.push(f);
+      addCardForFile(f.name);
+      added = true;
+    }
+    if (added && !isProcessing) processPendingFiles();
+  }
+  function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
+  function renderFileList() {
+    fileList.innerHTML = '';
+    selectedFiles.forEach((f, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+      chip.innerHTML = `<span>🎥 ${f.name} (${sizeMB} MB)</span><button class="remove" onclick="bugoReplicator.removeFile(${i})">&times;</button>`;
+      fileList.appendChild(chip);
+    });
+    const hasFiles = selectedFiles.length > 0;
+    startBtn.classList.toggle('hidden', !hasFiles);
+    if (hasFiles) updateStartButtonEnabled();
+  }
+  function addCardForFile(name) {
+    const escaped = CSS.escape(name);
+    const card = document.createElement('div');
+    card.className = 'video-card';
+    card.id = 'card-rep-' + escaped;
+    card.innerHTML = `
+      <div class="video-card-header">
+        <span class="video-card-name">🎥 ${name}</span>
+        <span class="video-card-status" id="status-rep-${escaped}">ממתין</span>
+      </div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="bar-rep-${escaped}"></div></div>
+      <div class="script-results" id="result-rep-${escaped}"></div>
+    `;
+    cardsContainer.appendChild(card);
+  }
+
+  /* ---- SSE status handler — extra statuses for replicator flow ---- */
+  function handleStatus(d) {
+    const escaped = CSS.escape(d.video);
+    const statusEl = document.getElementById('status-rep-' + escaped);
+    const barEl    = document.getElementById('bar-rep-' + escaped);
+    if (!statusEl) return;
+    const map = {
+      'waiting':           { text: 'ממתין',            pct: 0,   cls: '' },
+      'transcribing':      { text: 'מתמלל...',          pct: 25,  cls: 'active' },
+      'translating':       { text: 'מתרגם לעברית...',   pct: 55,  cls: 'active' },
+      'generating-hooks':  { text: 'מייצר הוקים...',    pct: 85,  cls: 'active' },
+      'done':              { text: '✓ מוכן לעריכה',     pct: 100, cls: 'done' },
+      'error':             { text: '✗ שגיאה',           pct: 100, cls: 'error' },
+    };
+    const info = map[d.status] || { text: d.status, pct: 0, cls: '' };
+    if (info.cls === 'active') {
+      statusEl.innerHTML = info.text + '<span class="spinner"></span>';
+    } else {
+      statusEl.textContent = info.text;
+    }
+    statusEl.className = 'video-card-status ' + info.cls;
+    barEl.style.width = info.pct + '%';
+    if (info.cls === 'done') barEl.classList.add('done');
+    const card = document.getElementById('card-rep-' + escaped);
+    if (d.status === 'done') card.classList.add('done');
+    if (d.status === 'error') card.classList.add('error');
+  }
+
+  /* ---- Build result HTML — includes Approve button + Regenerate Hooks ---- */
+  function buildResultHtml(d) {
+    let html = '';
+    if (d.error) {
+      html += `<div style="color:#ef4444;margin-top:8px;font-size:14px;">שגיאה: ${escapeHtml(d.error)}</div>`;
+    }
+    if (d.hebrew || d.english) {
+      const uid = 'vidrep-' + Math.random().toString(36).slice(2, 8);
+      html += `<div class="lang-columns">`;
+
+      // Hebrew column — EDITABLE script + hooks + regenerate-hooks button
+      html += `<div class="lang-block">`;
+      html += `<div class="lang-label">🇮🇱 עברית <button class="copy-btn" onclick="bugoReplicator.copyText(this)">📋 העתק</button></div>`;
+      html += `<div class="script-box rtl editable" contenteditable="true" data-lang="he" id="he-${uid}">${escapeHtml(d.hebrew || '')}</div>`;
+      html += `<div class="hooks-section rtl editable" contenteditable="true" id="hooks-he-${uid}">`;
+      html += `<div class="hooks-label" contenteditable="false">הוקים (1=מקורי, 2-5=אלטרנטיביים מבוססי עובדות):</div>`;
+      html += escapeHtml(d.hooks_he || '');
+      html += `</div>`;
+      html += `<button class="regen-hooks-btn" onclick="bugoReplicator.regenerateHooks(this, '${uid}', '${escapeAttr(d.job_id || currentJobId)}')">🎲 רענן 4 הוקים אלטרנטיביים</button>`;
+      html += `<div class="editable-hint">✏️ ניתן לערוך סקריפט והוקים ישירות</div>`;
+      html += `<button class="retranslate-btn" onclick="bugoReplicator.retranslate(this, '${uid}')">🔄 תרגם לאנגלית לפי העברית</button>`;
+      html += `</div>`;
+
+      // English column — READ ONLY
+      html += `<div class="lang-block">`;
+      html += `<div class="lang-label">🇺🇸 English <button class="copy-btn" onclick="bugoReplicator.copyText(this)">📋 Copy</button></div>`;
+      html += `<div class="script-box ltr" data-lang="en" id="en-${uid}">${escapeHtml(d.english || '')}</div>`;
+      html += `<div class="hooks-section ltr" id="hooks-en-${uid}">`;
+      html += `<div class="hooks-label">Hooks:</div>`;
+      html += escapeHtml(d.hooks_en || '');
+      html += `</div>`;
+      html += `</div>`;
+
+      html += `</div>`; // end lang-columns
+
+      html += `<button class="approve-btn" id="approve-${uid}" `
+           +  `onclick="bugoReplicator.approveUpload(this, '${uid}', '${escapeAttr(d.video)}', '${escapeAttr(d.job_id || currentJobId)}')">`;
+      html += `✅ אשר והעלה לדרייב</button>`;
+      html += `<div id="upload-status-${uid}"></div>`;
+    }
+    return html;
+  }
+
+  /* ---- Start Processing ---- */
+  startBtn.addEventListener('click', async () => {
+    if (selectedFiles.length === 0) return;
+    if (!getSelectedProfile()) { alert('בחר פרופיל (עידו / הדר) לפני התחלת עיבוד'); return; }
+    startBtn.disabled = true;
+    isProcessing = true;
+
+    const form = new FormData();
+    selectedFiles.forEach(f => form.append('videos', f));
+
+    let jobId;
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!data.job_id) throw new Error(data.error || 'Upload failed');
+      jobId = data.job_id;
+      currentJobId = jobId;
+    } catch (err) {
+      alert('שגיאה בהעלאה: ' + err.message);
+      startBtn.disabled = false;
+      isProcessing = false;
+      return;
+    }
+
+    uploadSec.classList.add('hidden');
+    progressSec.classList.remove('hidden');
+    cardsContainer.innerHTML = '';
+    selectedFiles.forEach(f => addCardForFile(f.name));
+
+    connectSSE(jobId);
+  });
+
+  function connectSSE(jobId) {
+    const evtSrc = new EventSource('/process-replicator/' + jobId);
+    evtSrc.addEventListener('status', e => handleStatus(JSON.parse(e.data)));
+    evtSrc.addEventListener('result', e => {
+      const d = JSON.parse(e.data);
+      const escaped = CSS.escape(d.video);
+      const resultEl = document.getElementById('result-rep-' + escaped);
+      if (!resultEl) return;
+      resultEl.innerHTML = buildResultHtml(d);
+      resultEl.classList.add('visible');
+    });
+    evtSrc.addEventListener('done', () => {
+      evtSrc.close();
+      isProcessing = false;
+      resetBtn.classList.remove('hidden');
+      if (pendingFiles.length > 0) processPendingFiles();
+    });
+    evtSrc.onerror = () => { evtSrc.close(); isProcessing = false; resetBtn.classList.remove('hidden'); };
+  }
+
+  async function processPendingFiles() {
+    if (pendingFiles.length === 0) return;
+    isProcessing = true;
+    resetBtn.classList.add('hidden');
+    const form = new FormData();
+    pendingFiles.forEach(f => form.append('videos', f));
+    pendingFiles = [];
+    let jobId;
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!data.job_id) throw new Error(data.error || 'Upload failed');
+      jobId = data.job_id;
+      currentJobId = jobId;
+    } catch (err) {
+      alert('שגיאה: ' + err.message);
+      isProcessing = false;
+      resetBtn.classList.remove('hidden');
+      return;
+    }
+    connectSSE(jobId);
+  }
+
+  /* ---- Approve & Upload (profile-aware) ---- */
+  async function approveUpload(btn, uid, videoName, jobId) {
+    const heBox = document.getElementById('he-' + uid);
+    const enBox = document.getElementById('en-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    const hooksEnEl = document.getElementById('hooks-en-' + uid);
+    const statusDiv = document.getElementById('upload-status-' + uid);
+
+    const profile = getSelectedProfile();
+    if (!profile) {
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל (עידו / הדר) לפני ההעלאה</div>`;
+      return;
+    }
+
+    const hebrew = heBox ? heBox.innerText.trim() : '';
+    const english = enBox ? enBox.innerText.trim() : '';
+    const hooksHe = getHooksText(hooksHeEl);
+    const hooksEn = getHooksText(hooksEnEl);
+
+    btn.disabled = true;
+    btn.innerHTML = '⏳ מעלה לדרייב...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/approve-upload-replicator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: jobId, video: videoName, profile,
+          hebrew, hooks_he: hooksHe, english, hooks_en: hooksEn,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      btn.style.display = 'none';
+      const docUrl = `https://docs.google.com/document/d/${data.doc_id}/edit`;
+      const folderUrl = `https://drive.google.com/drive/folders/${data.video_folder_id}`;
+      statusDiv.innerHTML = `
+        <div class="upload-success">
+          ✅ הועלה בהצלחה לפרופיל ${profile === 'ido' ? 'עידו' : 'הדר'}!
+          <a href="${docUrl}" target="_blank">📄 פתח מסמך</a>
+          &nbsp;|&nbsp;
+          <a href="${folderUrl}" target="_blank">📁 תיקיית סרטונים</a>
+        </div>`;
+
+      const card = btn.closest('.video-card');
+      if (card) { card.classList.remove('done'); card.classList.add('uploaded'); }
+
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = '✅ אשר והעלה לדרייב';
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">שגיאה: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  /* ---- Regenerate the 4 alternative hooks against current Hebrew ---- */
+  async function regenerateHooks(btn, uid, jobId) {
+    const heBox = document.getElementById('he-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    if (!heBox || !hooksHeEl) return;
+    const hebrew = heBox.innerText.trim();
+    if (!hebrew) { alert('אין טקסט עברי'); return; }
+
+    btn.disabled = true;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '🎲 מייצר...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/regenerate-extra-hooks/' + jobId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hebrew }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      // Preserve the label, replace the rest.
+      const label = hooksHeEl.querySelector('.hooks-label');
+      const labelHtml = label ? label.outerHTML : '';
+      hooksHeEl.innerHTML = labelHtml + escapeHtml(data.hooks_he || '');
+    } catch (err) {
+      alert('שגיאה: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+
+  /* ---- Retranslate (literal) ---- */
+  async function retranslate(btn, uid) {
+    const heBox = document.getElementById('he-' + uid);
+    const enBox = document.getElementById('en-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    const hooksEnEl = document.getElementById('hooks-en-' + uid);
+    if (!heBox || !enBox) return;
+
+    const hebrewText = heBox.innerText.trim();
+    if (!hebrewText) { alert('אין טקסט עברי לתרגום'); return; }
+
+    const hooksHe = getHooksText(hooksHeEl);
+
+    btn.disabled = true;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '🔄 מתרגם...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/retranslate-replicator', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hebrew: hebrewText, hooks_he: hooksHe }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      enBox.textContent = data.english;
+      if (data.hooks_en && hooksEnEl) {
+        const label = hooksEnEl.querySelector('.hooks-label');
+        const labelHtml = label ? label.outerHTML : '<div class="hooks-label">Hooks:</div>';
+        hooksEnEl.innerHTML = labelHtml + escapeHtml(data.hooks_en);
+      }
+    } catch (err) {
+      alert('שגיאה בתרגום: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+
+  /* ---- Helpers (local to this IIFE) ---- */
+  function getHooksText(hooksEl) {
+    if (!hooksEl) return '';
+    const parts = [];
+    for (const node of hooksEl.childNodes) {
+      if (node.nodeType === 1 && node.classList && node.classList.contains('hooks-label')) continue;
+      const txt = (node.textContent || '').trim();
+      if (txt) parts.push(txt);
+    }
+    return parts.join('\n').trim();
+  }
+
+  function copyText(btn) {
+    const block = btn.closest('.lang-block');
+    const box = block.querySelector('.script-box');
+    const hooks = block.querySelector('.hooks-section');
+    let text = box.innerText;
+    if (hooks) text += '\n\n' + hooks.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓ הועתק!';
+      setTimeout(() => btn.textContent = orig, 1500);
+    });
+  }
+
+  /* ---- Reset ---- */
+  resetBtn.addEventListener('click', () => {
+    selectedFiles = [];
+    pendingFiles = [];
+    currentJobId = null;
+    fileList.innerHTML = '';
+    cardsContainer.innerHTML = '';
+    progressSec.classList.add('hidden');
+    resetBtn.classList.add('hidden');
+    uploadSec.classList.remove('hidden');
+    startBtn.classList.add('hidden');
+    startBtn.disabled = false;
+  });
+
+  window.bugoReplicator = { addFiles, removeFile, copyText, retranslate, regenerateHooks, approveUpload };
 })();
 </script>
 </body>
