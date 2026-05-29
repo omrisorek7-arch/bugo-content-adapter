@@ -201,6 +201,38 @@
   }
   .regen-hooks-btn:hover { background: #f5efff; }
   .regen-hooks-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+  /* Custom name input (shared across all tabs, before approve button) */
+  .name-row {
+    margin-top: 16px; display: flex; gap: 8px; align-items: center;
+  }
+  .name-row label {
+    font-size: 13px; font-weight: 600; color: #555; white-space: nowrap;
+  }
+  .name-input {
+    flex: 1; padding: 10px 12px; border: 1px solid #ddd; border-radius: 8px;
+    font-size: 14px; outline: none; font-family: inherit; direction: rtl;
+  }
+  .name-input:focus { border-color: #0266FE; box-shadow: 0 0 0 2px rgba(2,102,254,0.15); }
+  .name-row .hint {
+    font-size: 11px; color: #999;
+  }
+
+  /* "Include English in upload" checkbox row (shared across all tabs) */
+  .english-toggle-row {
+    margin-top: 10px; display: flex; gap: 8px; align-items: center;
+    padding: 10px 12px; background: #fafafa; border: 1px solid #eee; border-radius: 8px;
+  }
+  .english-toggle-row label {
+    font-size: 14px; font-weight: 600; color: #444; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+  }
+  .english-toggle-row input[type="checkbox"] {
+    width: 18px; height: 18px; cursor: pointer; accent-color: #0266FE;
+  }
+  .english-toggle-row .hint {
+    font-size: 12px; color: #888; margin-right: auto;
+  }
 </style>
 </head>
 <body>
@@ -215,18 +247,18 @@
     <button class="tab-btn active" data-tab="indoor">באגו פנים</button>
     <button class="tab-btn" data-tab="outdoor">באגו חוץ</button>
     <button class="tab-btn" data-tab="replicator">רפליקיטור</button>
+    <button class="tab-btn" data-tab="pets">רפליקיטור חיות מחמד</button>
   </div>
 
   <div id="tab-indoor" class="tab-panel active">
 
   <div class="profile-picker">
     <span class="profile-picker-label">העלאה לדרייב של:</span>
+    {% for key, profile in profiles.items() %}
     <label class="profile-radio">
-      <input type="radio" name="indoor-profile" value="ido"> עידו
+      <input type="radio" name="indoor-profile" value="{{ key }}"> {{ profile.label_he }}
     </label>
-    <label class="profile-radio">
-      <input type="radio" name="indoor-profile" value="hadar"> הדר
-    </label>
+    {% endfor %}
   </div>
 
   <!-- Upload Section -->
@@ -260,12 +292,11 @@
 
     <div class="profile-picker">
       <span class="profile-picker-label">העלאה לדרייב של:</span>
+      {% for key, profile in profiles.items() %}
       <label class="profile-radio">
-        <input type="radio" name="outdoor-profile" value="ido"> עידו
+        <input type="radio" name="outdoor-profile" value="{{ key }}"> {{ profile.label_he }}
       </label>
-      <label class="profile-radio">
-        <input type="radio" name="outdoor-profile" value="hadar"> הדר
-      </label>
+      {% endfor %}
     </div>
 
     <!-- Upload Section (Outdoor) -->
@@ -299,12 +330,11 @@
 
     <div class="profile-picker">
       <span class="profile-picker-label">העלאה לדרייב של:</span>
+      {% for key, profile in profiles.items() %}
       <label class="profile-radio">
-        <input type="radio" name="replicator-profile" value="ido"> עידו
+        <input type="radio" name="replicator-profile" value="{{ key }}"> {{ profile.label_he }}
       </label>
-      <label class="profile-radio">
-        <input type="radio" name="replicator-profile" value="hadar"> הדר
-      </label>
+      {% endfor %}
     </div>
 
     <div id="upload-section-replicator">
@@ -331,6 +361,42 @@
     <button class="reset-btn hidden" id="reset-btn-replicator">עבד סרטון נוסף</button>
 
   </div> <!-- end #tab-replicator -->
+
+  <div id="tab-pets" class="tab-panel">
+
+    <div class="profile-picker">
+      <span class="profile-picker-label">העלאה לדרייב של:</span>
+      {% for key, profile in profiles.items() %}
+      <label class="profile-radio">
+        <input type="radio" name="pets-profile" value="{{ key }}"> {{ profile.label_he }}
+      </label>
+      {% endfor %}
+    </div>
+
+    <div id="upload-section-pets">
+      <div class="drop-zone" id="drop-zone-pets">
+        <div class="drop-zone-icon">🐾</div>
+        <div class="drop-zone-text">גרור סרטוני getfurlife לכאן</div>
+        <div class="drop-zone-hint">תרגום 1:1 לעברית עם החלפת getfurlife → Bugo &bull; MP4, MOV, AVI, MKV</div>
+        <input type="file" id="file-input-pets" multiple accept=".mp4,.mov,.avi,.mkv">
+      </div>
+      <div class="file-list" id="file-list-pets"></div>
+      <button class="start-btn hidden" id="start-btn-pets">התחל עיבוד</button>
+    </div>
+
+    <div id="progress-section-pets" class="progress-section hidden">
+      <div class="drop-zone mini" id="mini-drop-zone-pets">
+        <div class="drop-zone-icon">➕</div>
+        <div class="drop-zone-text">גרור סרטון נוסף בזמן העיבוד</div>
+        <div class="drop-zone-hint">הסרטון יתווסף לתור</div>
+        <input type="file" id="mini-file-input-pets" multiple accept=".mp4,.mov,.avi,.mkv">
+      </div>
+      <div id="cards-container-pets"></div>
+    </div>
+
+    <button class="reset-btn hidden" id="reset-btn-pets">עבד סרטון נוסף</button>
+
+  </div> <!-- end #tab-pets -->
 
 </div>
 
@@ -360,7 +426,7 @@ function updateIndoorStartEnabled() {
   const p = getIndoorProfile();
   if (selectedFiles.length === 0) return;
   startBtn.disabled = !p;
-  startBtn.title = p ? '' : 'בחר עידו או הדר לפני התחלת עיבוד';
+  startBtn.title = p ? '' : 'בחר פרופיל לפני התחלת עיבוד';
 }
 document.querySelectorAll('input[name="indoor-profile"]').forEach(r => {
   r.addEventListener('change', updateIndoorStartEnabled);
@@ -491,6 +557,18 @@ function buildResultHtml(d) {
 
     html += `</div>`; // end lang-columns
 
+    // Optional custom name — used for both Drive video filename and Doc heading
+    html += `<div class="name-row">`;
+    html += `<label for="name-${uid}">שם:</label>`;
+    html += `<input type="text" class="name-input" id="name-${uid}" placeholder="לדוגמא: flea-collar-promo (אופציונלי, ריק = ברירת מחדל)">`;
+    html += `</div>`;
+
+    // Default = Hebrew only. Tick the box to also upload the English script + hooks.
+    html += `<div class="english-toggle-row">`;
+    html += `<label><input type="checkbox" id="english-${uid}"> כלול גם גרסה אנגלית בהעלאה</label>`;
+    html += `<span class="hint">ברירת מחדל: עברית בלבד</span>`;
+    html += `</div>`;
+
     // Approve & Upload button
     html += `<button class="approve-btn" id="approve-${uid}" `
          +  `onclick="approveUpload(this, '${uid}', '${escapeAttr(d.video)}', '${escapeAttr(d.job_id || currentJobId)}')">`;
@@ -503,7 +581,7 @@ function buildResultHtml(d) {
 /* ---- Start Processing ---- */
 startBtn.addEventListener('click', async () => {
   if (selectedFiles.length === 0) return;
-  if (!getIndoorProfile()) { alert('בחר פרופיל (עידו / הדר) לפני התחלת עיבוד'); return; }
+  if (!getIndoorProfile()) { alert('בחר פרופיל לפני התחלת עיבוד'); return; }
   startBtn.disabled = true;
   isProcessing = true;
 
@@ -585,7 +663,7 @@ async function approveUpload(btn, uid, videoName, jobId) {
 
   const profile = getIndoorProfile();
   if (!profile) {
-    statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל (עידו / הדר) לפני ההעלאה</div>`;
+    statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל לפני ההעלאה</div>`;
     return;
   }
 
@@ -596,6 +674,17 @@ async function approveUpload(btn, uid, videoName, jobId) {
   // Get hooks text using helper
   const hooksHe = getHooksText(hooksHeEl);
   const hooksEn = getHooksText(hooksEnEl);
+
+  // Optional custom name (shared for Doc heading + video filename)
+  const nameInput = document.getElementById('name-' + uid);
+  const customName = nameInput ? nameInput.value.trim() : '';
+  // Hebrew-only by default; checkbox opts in to also uploading the English block.
+  const englishCheckbox = document.getElementById('english-' + uid);
+  const includeEnglish = englishCheckbox ? englishCheckbox.checked : false;
+
+  // Resolve profile label from the chosen radio for the success message
+  const radio = document.querySelector(`input[name="indoor-profile"][value="${profile}"]`);
+  const profileLabel = radio ? radio.parentElement.textContent.trim() : profile;
 
   btn.disabled = true;
   btn.innerHTML = '⏳ מעלה לדרייב...<span class="spinner"></span>';
@@ -608,6 +697,8 @@ async function approveUpload(btn, uid, videoName, jobId) {
         job_id: jobId,
         video: videoName,
         profile,
+        custom_name: customName,
+        include_english: includeEnglish,
         hebrew, hooks_he: hooksHe,
         english, hooks_en: hooksEn,
       }),
@@ -620,7 +711,7 @@ async function approveUpload(btn, uid, videoName, jobId) {
     const folderUrl = `https://drive.google.com/drive/folders/${data.video_folder_id}`;
     statusDiv.innerHTML = `
       <div class="upload-success">
-        ✅ הועלה בהצלחה לפרופיל ${profile === 'ido' ? 'עידו' : 'הדר'}!
+        ✅ הועלה בהצלחה לפרופיל ${data.profile_label || profileLabel}!
         <a href="${docUrl}" target="_blank">📄 פתח מסמך</a>
         &nbsp;|&nbsp;
         <a href="${folderUrl}" target="_blank">📁 תיקיית סרטונים</a>
@@ -768,7 +859,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const p = getOutdoorProfile();
     if (selectedFiles.length === 0) return;
     startBtn.disabled = !p;
-    startBtn.title = p ? '' : 'בחר עידו או הדר לפני התחלת עיבוד';
+    startBtn.title = p ? '' : 'בחר פרופיל לפני התחלת עיבוד';
   }
   document.querySelectorAll('input[name="outdoor-profile"]').forEach(r => {
     r.addEventListener('change', updateOutdoorStartEnabled);
@@ -896,6 +987,18 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
       html += `</div>`; // end lang-columns
 
+      // Optional custom name — used for both Drive video filename and Doc heading
+      html += `<div class="name-row">`;
+      html += `<label for="name-${uid}">שם:</label>`;
+      html += `<input type="text" class="name-input" id="name-${uid}" placeholder="אופציונלי — ריק = ברירת מחדל">`;
+      html += `</div>`;
+
+      // Default = Hebrew only. Tick the box to also upload the English script + hooks.
+      html += `<div class="english-toggle-row">`;
+      html += `<label><input type="checkbox" id="english-${uid}"> כלול גם גרסה אנגלית בהעלאה</label>`;
+      html += `<span class="hint">ברירת מחדל: עברית בלבד</span>`;
+      html += `</div>`;
+
       html += `<button class="approve-btn" id="approve-${uid}" `
            +  `onclick="bugoOutdoor.approveUpload(this, '${uid}', '${escapeAttr(d.video)}', '${escapeAttr(d.job_id || currentJobId)}')">`;
       html += `✅ אשר והעלה לדרייב</button>`;
@@ -907,7 +1010,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   /* ---- Start Processing ---- */
   startBtn.addEventListener('click', async () => {
     if (selectedFiles.length === 0) return;
-    if (!getOutdoorProfile()) { alert('בחר פרופיל (עידו / הדר) לפני התחלת עיבוד'); return; }
+    if (!getOutdoorProfile()) { alert('בחר פרופיל לפני התחלת עיבוד'); return; }
     startBtn.disabled = true;
     isProcessing = true;
 
@@ -1029,7 +1132,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     const profile = getOutdoorProfile();
     if (!profile) {
-      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל (עידו / הדר) לפני ההעלאה</div>`;
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל לפני ההעלאה</div>`;
       return;
     }
 
@@ -1037,6 +1140,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const english = enBox ? enBox.innerText.trim() : '';
     const hooksHe = getHooksText(hooksHeEl);
     const hooksEn = getHooksText(hooksEnEl);
+    const nameInput = document.getElementById('name-' + uid);
+    const customName = nameInput ? nameInput.value.trim() : '';
+    const englishCheckbox = document.getElementById('english-' + uid);
+    const includeEnglish = englishCheckbox ? englishCheckbox.checked : false;
+    const radio = document.querySelector(`input[name="outdoor-profile"][value="${profile}"]`);
+    const profileLabel = radio ? radio.parentElement.textContent.trim() : profile;
 
     btn.disabled = true;
     btn.innerHTML = '⏳ מעלה לדרייב...<span class="spinner"></span>';
@@ -1046,7 +1155,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job_id: jobId, video: videoName, profile,
+          job_id: jobId, video: videoName, profile, custom_name: customName,
+          include_english: includeEnglish,
           hebrew, hooks_he: hooksHe, english, hooks_en: hooksEn,
         }),
       });
@@ -1058,7 +1168,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       const folderUrl = `https://drive.google.com/drive/folders/${data.video_folder_id}`;
       statusDiv.innerHTML = `
         <div class="upload-success">
-          ✅ הועלה בהצלחה לפרופיל ${profile === 'ido' ? 'עידו' : 'הדר'}!
+          ✅ הועלה בהצלחה לפרופיל ${data.profile_label || profileLabel}!
           <a href="${docUrl}" target="_blank">📄 פתח מסמך</a>
           &nbsp;|&nbsp;
           <a href="${folderUrl}" target="_blank">📁 תיקיית סרטונים</a>
@@ -1147,7 +1257,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   function updateStartButtonEnabled() {
     const profile = getSelectedProfile();
     startBtn.disabled = !profile;
-    startBtn.title = profile ? '' : 'בחר עידו או הדר לפני התחלת עיבוד';
+    startBtn.title = profile ? '' : 'בחר פרופיל לפני התחלת עיבוד';
   }
   document.querySelectorAll('input[name="replicator-profile"]').forEach(r => {
     r.addEventListener('change', updateStartButtonEnabled);
@@ -1277,6 +1387,18 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
       html += `</div>`; // end lang-columns
 
+      // Optional custom name — used for both Drive video filename and Doc heading
+      html += `<div class="name-row">`;
+      html += `<label for="name-${uid}">שם:</label>`;
+      html += `<input type="text" class="name-input" id="name-${uid}" placeholder="אופציונלי — ריק = ברירת מחדל">`;
+      html += `</div>`;
+
+      // Default = Hebrew only. Tick the box to also upload the English script + hooks.
+      html += `<div class="english-toggle-row">`;
+      html += `<label><input type="checkbox" id="english-${uid}"> כלול גם גרסה אנגלית בהעלאה</label>`;
+      html += `<span class="hint">ברירת מחדל: עברית בלבד</span>`;
+      html += `</div>`;
+
       html += `<button class="approve-btn" id="approve-${uid}" `
            +  `onclick="bugoReplicator.approveUpload(this, '${uid}', '${escapeAttr(d.video)}', '${escapeAttr(d.job_id || currentJobId)}')">`;
       html += `✅ אשר והעלה לדרייב</button>`;
@@ -1288,7 +1410,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   /* ---- Start Processing ---- */
   startBtn.addEventListener('click', async () => {
     if (selectedFiles.length === 0) return;
-    if (!getSelectedProfile()) { alert('בחר פרופיל (עידו / הדר) לפני התחלת עיבוד'); return; }
+    if (!getSelectedProfile()) { alert('בחר פרופיל לפני התחלת עיבוד'); return; }
     startBtn.disabled = true;
     isProcessing = true;
 
@@ -1370,7 +1492,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 
     const profile = getSelectedProfile();
     if (!profile) {
-      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל (עידו / הדר) לפני ההעלאה</div>`;
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל לפני ההעלאה</div>`;
       return;
     }
 
@@ -1378,6 +1500,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     const english = enBox ? enBox.innerText.trim() : '';
     const hooksHe = getHooksText(hooksHeEl);
     const hooksEn = getHooksText(hooksEnEl);
+    const nameInput = document.getElementById('name-' + uid);
+    const customName = nameInput ? nameInput.value.trim() : '';
+    const englishCheckbox = document.getElementById('english-' + uid);
+    const includeEnglish = englishCheckbox ? englishCheckbox.checked : false;
+    const radio = document.querySelector(`input[name="replicator-profile"][value="${profile}"]`);
+    const profileLabel = radio ? radio.parentElement.textContent.trim() : profile;
 
     btn.disabled = true;
     btn.innerHTML = '⏳ מעלה לדרייב...<span class="spinner"></span>';
@@ -1387,7 +1515,8 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          job_id: jobId, video: videoName, profile,
+          job_id: jobId, video: videoName, profile, custom_name: customName,
+          include_english: includeEnglish,
           hebrew, hooks_he: hooksHe, english, hooks_en: hooksEn,
         }),
       });
@@ -1399,7 +1528,7 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
       const folderUrl = `https://drive.google.com/drive/folders/${data.video_folder_id}`;
       statusDiv.innerHTML = `
         <div class="upload-success">
-          ✅ הועלה בהצלחה לפרופיל ${profile === 'ido' ? 'עידו' : 'הדר'}!
+          ✅ הועלה בהצלחה לפרופיל ${data.profile_label || profileLabel}!
           <a href="${docUrl}" target="_blank">📄 פתח מסמך</a>
           &nbsp;|&nbsp;
           <a href="${folderUrl}" target="_blank">📁 תיקיית סרטונים</a>
@@ -1527,6 +1656,427 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
   });
 
   window.bugoReplicator = { addFiles, removeFile, copyText, retranslate, regenerateHooks, approveUpload };
+})();
+
+/* =====================================================================
+   PETS REPLICATOR pipeline — isolated IIFE.
+   Mirror of bugoReplicator but targets /process-replicator-pets and
+   /approve-upload-replicator-pets, applies getfurlife → Bugo overrides.
+   ===================================================================== */
+(function() {
+  const ALLOWED = new Set(['mp4','mov','avi','mkv']);
+  let selectedFiles = [];
+  let pendingFiles = [];
+  let isProcessing = false;
+  let currentJobId = null;
+
+  const dropZone     = document.getElementById('drop-zone-pets');
+  const fileInput    = document.getElementById('file-input-pets');
+  const fileList     = document.getElementById('file-list-pets');
+  const startBtn     = document.getElementById('start-btn-pets');
+  const uploadSec    = document.getElementById('upload-section-pets');
+  const progressSec  = document.getElementById('progress-section-pets');
+  const cardsContainer = document.getElementById('cards-container-pets');
+  const resetBtn     = document.getElementById('reset-btn-pets');
+  const miniDropZone = document.getElementById('mini-drop-zone-pets');
+  const miniFileInput = document.getElementById('mini-file-input-pets');
+
+  function getSelectedProfile() {
+    const checked = document.querySelector('input[name="pets-profile"]:checked');
+    return checked ? checked.value : '';
+  }
+  function updateStartButtonEnabled() {
+    const profile = getSelectedProfile();
+    startBtn.disabled = !profile;
+    startBtn.title = profile ? '' : 'בחר פרופיל לפני התחלת עיבוד';
+  }
+  document.querySelectorAll('input[name="pets-profile"]').forEach(r => {
+    r.addEventListener('change', updateStartButtonEnabled);
+  });
+
+  /* ---- Drag & Drop ---- */
+  dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => { e.preventDefault(); dropZone.classList.remove('dragover'); addFiles(e.dataTransfer.files); });
+  fileInput.addEventListener('change', () => { addFiles(fileInput.files); fileInput.value = ''; });
+
+  miniDropZone.addEventListener('dragover', e => { e.preventDefault(); miniDropZone.classList.add('dragover'); });
+  miniDropZone.addEventListener('dragleave', () => miniDropZone.classList.remove('dragover'));
+  miniDropZone.addEventListener('drop', e => { e.preventDefault(); miniDropZone.classList.remove('dragover'); addPendingFiles(e.dataTransfer.files); });
+  miniFileInput.addEventListener('change', () => { addPendingFiles(miniFileInput.files); miniFileInput.value = ''; });
+
+  function addFiles(files) {
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ALLOWED.has(ext)) continue;
+      if (selectedFiles.some(s => s.name === f.name && s.size === f.size)) continue;
+      selectedFiles.push(f);
+    }
+    renderFileList();
+  }
+  function addPendingFiles(files) {
+    let added = false;
+    for (const f of files) {
+      const ext = f.name.split('.').pop().toLowerCase();
+      if (!ALLOWED.has(ext)) continue;
+      pendingFiles.push(f);
+      addCardForFile(f.name);
+      added = true;
+    }
+    if (added && !isProcessing) processPendingFiles();
+  }
+  function removeFile(idx) { selectedFiles.splice(idx, 1); renderFileList(); }
+  function renderFileList() {
+    fileList.innerHTML = '';
+    selectedFiles.forEach((f, i) => {
+      const chip = document.createElement('div');
+      chip.className = 'file-chip';
+      const sizeMB = (f.size / 1024 / 1024).toFixed(1);
+      chip.innerHTML = `<span>🎥 ${f.name} (${sizeMB} MB)</span><button class="remove" onclick="bugoPets.removeFile(${i})">&times;</button>`;
+      fileList.appendChild(chip);
+    });
+    const hasFiles = selectedFiles.length > 0;
+    startBtn.classList.toggle('hidden', !hasFiles);
+    if (hasFiles) updateStartButtonEnabled();
+  }
+  function addCardForFile(name) {
+    const escaped = CSS.escape(name);
+    const card = document.createElement('div');
+    card.className = 'video-card';
+    card.id = 'card-pets-' + escaped;
+    card.innerHTML = `
+      <div class="video-card-header">
+        <span class="video-card-name">🎥 ${name}</span>
+        <span class="video-card-status" id="status-pets-${escaped}">ממתין</span>
+      </div>
+      <div class="progress-bar-track"><div class="progress-bar-fill" id="bar-pets-${escaped}"></div></div>
+      <div class="script-results" id="result-pets-${escaped}"></div>
+    `;
+    cardsContainer.appendChild(card);
+  }
+
+  /* ---- SSE status handler — same statuses as Replicator ---- */
+  function handleStatus(d) {
+    const escaped = CSS.escape(d.video);
+    const statusEl = document.getElementById('status-pets-' + escaped);
+    const barEl    = document.getElementById('bar-pets-' + escaped);
+    if (!statusEl) return;
+    const map = {
+      'waiting':           { text: 'ממתין',            pct: 0,   cls: '' },
+      'transcribing':      { text: 'מתמלל...',          pct: 25,  cls: 'active' },
+      'translating':       { text: 'מתרגם לעברית...',   pct: 55,  cls: 'active' },
+      'generating-hooks':  { text: 'מייצר הוקים...',    pct: 85,  cls: 'active' },
+      'done':              { text: '✓ מוכן לעריכה',     pct: 100, cls: 'done' },
+      'error':             { text: '✗ שגיאה',           pct: 100, cls: 'error' },
+    };
+    const info = map[d.status] || { text: d.status, pct: 0, cls: '' };
+    if (info.cls === 'active') {
+      statusEl.innerHTML = info.text + '<span class="spinner"></span>';
+    } else {
+      statusEl.textContent = info.text;
+    }
+    statusEl.className = 'video-card-status ' + info.cls;
+    barEl.style.width = info.pct + '%';
+    if (info.cls === 'done') barEl.classList.add('done');
+    const card = document.getElementById('card-pets-' + escaped);
+    if (d.status === 'done') card.classList.add('done');
+    if (d.status === 'error') card.classList.add('error');
+  }
+
+  function buildResultHtml(d) {
+    let html = '';
+    if (d.error) {
+      html += `<div style="color:#ef4444;margin-top:8px;font-size:14px;">שגיאה: ${escapeHtml(d.error)}</div>`;
+    }
+    if (d.hebrew || d.english) {
+      const uid = 'vidpets-' + Math.random().toString(36).slice(2, 8);
+      html += `<div class="lang-columns">`;
+
+      html += `<div class="lang-block">`;
+      html += `<div class="lang-label">🇮🇱 עברית <button class="copy-btn" onclick="bugoPets.copyText(this)">📋 העתק</button></div>`;
+      html += `<div class="script-box rtl editable" contenteditable="true" data-lang="he" id="he-${uid}">${escapeHtml(d.hebrew || '')}</div>`;
+      html += `<div class="hooks-section rtl editable" contenteditable="true" id="hooks-he-${uid}">`;
+      html += `<div class="hooks-label" contenteditable="false">הוקים (1=מקורי, 2-5=אלטרנטיביים מבוססי עובדות):</div>`;
+      html += escapeHtml(d.hooks_he || '');
+      html += `</div>`;
+      html += `<button class="regen-hooks-btn" onclick="bugoPets.regenerateHooks(this, '${uid}', '${escapeAttr(d.job_id || currentJobId)}')">🎲 רענן 4 הוקים אלטרנטיביים</button>`;
+      html += `<div class="editable-hint">✏️ ניתן לערוך סקריפט והוקים ישירות</div>`;
+      html += `<button class="retranslate-btn" onclick="bugoPets.retranslate(this, '${uid}')">🔄 תרגם לאנגלית לפי העברית</button>`;
+      html += `</div>`;
+
+      html += `<div class="lang-block">`;
+      html += `<div class="lang-label">🇺🇸 English <button class="copy-btn" onclick="bugoPets.copyText(this)">📋 Copy</button></div>`;
+      html += `<div class="script-box ltr" data-lang="en" id="en-${uid}">${escapeHtml(d.english || '')}</div>`;
+      html += `<div class="hooks-section ltr" id="hooks-en-${uid}">`;
+      html += `<div class="hooks-label">Hooks:</div>`;
+      html += escapeHtml(d.hooks_en || '');
+      html += `</div>`;
+      html += `</div>`;
+
+      html += `</div>`; // end lang-columns
+
+      // Optional custom name — used for both Drive video filename and Doc heading
+      html += `<div class="name-row">`;
+      html += `<label for="name-${uid}">שם:</label>`;
+      html += `<input type="text" class="name-input" id="name-${uid}" placeholder="אופציונלי — ריק = ברירת מחדל">`;
+      html += `</div>`;
+
+      // Default = Hebrew only. Tick the box to also upload the English script + hooks.
+      html += `<div class="english-toggle-row">`;
+      html += `<label><input type="checkbox" id="english-${uid}"> כלול גם גרסה אנגלית בהעלאה</label>`;
+      html += `<span class="hint">ברירת מחדל: עברית בלבד</span>`;
+      html += `</div>`;
+
+      html += `<button class="approve-btn" id="approve-${uid}" `
+           +  `onclick="bugoPets.approveUpload(this, '${uid}', '${escapeAttr(d.video)}', '${escapeAttr(d.job_id || currentJobId)}')">`;
+      html += `✅ אשר והעלה לדרייב</button>`;
+      html += `<div id="upload-status-${uid}"></div>`;
+    }
+    return html;
+  }
+
+  startBtn.addEventListener('click', async () => {
+    if (selectedFiles.length === 0) return;
+    if (!getSelectedProfile()) { alert('בחר פרופיל לפני התחלת עיבוד'); return; }
+    startBtn.disabled = true;
+    isProcessing = true;
+
+    const form = new FormData();
+    selectedFiles.forEach(f => form.append('videos', f));
+
+    let jobId;
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!data.job_id) throw new Error(data.error || 'Upload failed');
+      jobId = data.job_id;
+      currentJobId = jobId;
+    } catch (err) {
+      alert('שגיאה בהעלאה: ' + err.message);
+      startBtn.disabled = false;
+      isProcessing = false;
+      return;
+    }
+
+    uploadSec.classList.add('hidden');
+    progressSec.classList.remove('hidden');
+    cardsContainer.innerHTML = '';
+    selectedFiles.forEach(f => addCardForFile(f.name));
+
+    connectSSE(jobId);
+  });
+
+  function connectSSE(jobId) {
+    const evtSrc = new EventSource('/process-replicator-pets/' + jobId);
+    evtSrc.addEventListener('status', e => handleStatus(JSON.parse(e.data)));
+    evtSrc.addEventListener('result', e => {
+      const d = JSON.parse(e.data);
+      const escaped = CSS.escape(d.video);
+      const resultEl = document.getElementById('result-pets-' + escaped);
+      if (!resultEl) return;
+      resultEl.innerHTML = buildResultHtml(d);
+      resultEl.classList.add('visible');
+    });
+    evtSrc.addEventListener('done', () => {
+      evtSrc.close();
+      isProcessing = false;
+      resetBtn.classList.remove('hidden');
+      if (pendingFiles.length > 0) processPendingFiles();
+    });
+    evtSrc.onerror = () => { evtSrc.close(); isProcessing = false; resetBtn.classList.remove('hidden'); };
+  }
+
+  async function processPendingFiles() {
+    if (pendingFiles.length === 0) return;
+    isProcessing = true;
+    resetBtn.classList.add('hidden');
+    const form = new FormData();
+    pendingFiles.forEach(f => form.append('videos', f));
+    pendingFiles = [];
+    let jobId;
+    try {
+      const res = await fetch('/upload', { method: 'POST', body: form });
+      const data = await res.json();
+      if (!data.job_id) throw new Error(data.error || 'Upload failed');
+      jobId = data.job_id;
+      currentJobId = jobId;
+    } catch (err) {
+      alert('שגיאה: ' + err.message);
+      isProcessing = false;
+      resetBtn.classList.remove('hidden');
+      return;
+    }
+    connectSSE(jobId);
+  }
+
+  async function approveUpload(btn, uid, videoName, jobId) {
+    const heBox = document.getElementById('he-' + uid);
+    const enBox = document.getElementById('en-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    const hooksEnEl = document.getElementById('hooks-en-' + uid);
+    const statusDiv = document.getElementById('upload-status-' + uid);
+
+    const profile = getSelectedProfile();
+    if (!profile) {
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">בחר פרופיל לפני ההעלאה</div>`;
+      return;
+    }
+
+    const hebrew = heBox ? heBox.innerText.trim() : '';
+    const english = enBox ? enBox.innerText.trim() : '';
+    const hooksHe = getHooksText(hooksHeEl);
+    const hooksEn = getHooksText(hooksEnEl);
+    const nameInput = document.getElementById('name-' + uid);
+    const customName = nameInput ? nameInput.value.trim() : '';
+    const englishCheckbox = document.getElementById('english-' + uid);
+    const includeEnglish = englishCheckbox ? englishCheckbox.checked : false;
+    const radio = document.querySelector(`input[name="pets-profile"][value="${profile}"]`);
+    const profileLabel = radio ? radio.parentElement.textContent.trim() : profile;
+
+    btn.disabled = true;
+    btn.innerHTML = '⏳ מעלה לדרייב...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/approve-upload-replicator-pets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          job_id: jobId, video: videoName, profile, custom_name: customName,
+          include_english: includeEnglish,
+          hebrew, hooks_he: hooksHe, english, hooks_en: hooksEn,
+        }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      btn.style.display = 'none';
+      const docUrl = `https://docs.google.com/document/d/${data.doc_id}/edit`;
+      const folderUrl = `https://drive.google.com/drive/folders/${data.video_folder_id}`;
+      statusDiv.innerHTML = `
+        <div class="upload-success">
+          ✅ הועלה בהצלחה לפרופיל ${data.profile_label || profileLabel}!
+          <a href="${docUrl}" target="_blank">📄 פתח מסמך</a>
+          &nbsp;|&nbsp;
+          <a href="${folderUrl}" target="_blank">📁 תיקיית סרטונים</a>
+        </div>`;
+
+      const card = btn.closest('.video-card');
+      if (card) { card.classList.remove('done'); card.classList.add('uploaded'); }
+
+    } catch (err) {
+      btn.disabled = false;
+      btn.innerHTML = '✅ אשר והעלה לדרייב';
+      statusDiv.innerHTML = `<div style="color:#ef4444;margin-top:8px;font-size:14px;">שגיאה: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  async function regenerateHooks(btn, uid, jobId) {
+    const heBox = document.getElementById('he-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    if (!heBox || !hooksHeEl) return;
+    const hebrew = heBox.innerText.trim();
+    if (!hebrew) { alert('אין טקסט עברי'); return; }
+
+    btn.disabled = true;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '🎲 מייצר...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/regenerate-extra-hooks-pets/' + jobId, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hebrew }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const label = hooksHeEl.querySelector('.hooks-label');
+      const labelHtml = label ? label.outerHTML : '';
+      hooksHeEl.innerHTML = labelHtml + escapeHtml(data.hooks_he || '');
+    } catch (err) {
+      alert('שגיאה: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+
+  async function retranslate(btn, uid) {
+    const heBox = document.getElementById('he-' + uid);
+    const enBox = document.getElementById('en-' + uid);
+    const hooksHeEl = document.getElementById('hooks-he-' + uid);
+    const hooksEnEl = document.getElementById('hooks-en-' + uid);
+    if (!heBox || !enBox) return;
+
+    const hebrewText = heBox.innerText.trim();
+    if (!hebrewText) { alert('אין טקסט עברי לתרגום'); return; }
+
+    const hooksHe = getHooksText(hooksHeEl);
+
+    btn.disabled = true;
+    const origText = btn.innerHTML;
+    btn.innerHTML = '🔄 מתרגם...<span class="spinner"></span>';
+
+    try {
+      const res = await fetch('/retranslate-replicator-pets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ hebrew: hebrewText, hooks_he: hooksHe }),
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+
+      enBox.textContent = data.english;
+      if (data.hooks_en && hooksEnEl) {
+        const label = hooksEnEl.querySelector('.hooks-label');
+        const labelHtml = label ? label.outerHTML : '<div class="hooks-label">Hooks:</div>';
+        hooksEnEl.innerHTML = labelHtml + escapeHtml(data.hooks_en);
+      }
+    } catch (err) {
+      alert('שגיאה בתרגום: ' + err.message);
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = origText;
+    }
+  }
+
+  function getHooksText(hooksEl) {
+    if (!hooksEl) return '';
+    const parts = [];
+    for (const node of hooksEl.childNodes) {
+      if (node.nodeType === 1 && node.classList && node.classList.contains('hooks-label')) continue;
+      const txt = (node.textContent || '').trim();
+      if (txt) parts.push(txt);
+    }
+    return parts.join('\n').trim();
+  }
+
+  function copyText(btn) {
+    const block = btn.closest('.lang-block');
+    const box = block.querySelector('.script-box');
+    const hooks = block.querySelector('.hooks-section');
+    let text = box.innerText;
+    if (hooks) text += '\n\n' + hooks.innerText;
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.textContent;
+      btn.textContent = '✓ הועתק!';
+      setTimeout(() => btn.textContent = orig, 1500);
+    });
+  }
+
+  resetBtn.addEventListener('click', () => {
+    selectedFiles = [];
+    pendingFiles = [];
+    currentJobId = null;
+    fileList.innerHTML = '';
+    cardsContainer.innerHTML = '';
+    progressSec.classList.add('hidden');
+    resetBtn.classList.add('hidden');
+    uploadSec.classList.remove('hidden');
+    startBtn.classList.add('hidden');
+    startBtn.disabled = false;
+  });
+
+  window.bugoPets = { addFiles, removeFile, copyText, retranslate, regenerateHooks, approveUpload };
 })();
 </script>
 </body>

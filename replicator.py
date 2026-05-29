@@ -44,20 +44,76 @@ BRAND_OVERRIDES: List[dict] = [
 # ---------------------------------------------------------------------------
 # Profile picker — Drive/Docs destination per user profile.
 # Read lazily from env so a .env reload picks up changes without restart.
+#
+# Ido and Hadar are the built-in profiles (always visible).
+# Profile 3 and Profile 4 are user-defined slots: visible only when both
+# their doc_id and folder_id are present in env. The label comes from
+# PROFILE3_LABEL_HE / PROFILE4_LABEL_HE.
 # ---------------------------------------------------------------------------
+
+# Accepts a full Google Doc/Drive URL or a bare ID and returns just the ID.
+# Patterns covered:
+#   https://docs.google.com/document/d/<ID>/edit         → <ID>
+#   https://drive.google.com/drive/folders/<ID>?usp=...  → <ID>
+#   https://drive.google.com/file/d/<ID>/view            → <ID>
+#   <ID>                                                 → <ID>
+_DRIVE_ID_PATTERNS = [
+    re.compile(r"/document/d/([a-zA-Z0-9_-]+)"),
+    re.compile(r"/drive/folders/([a-zA-Z0-9_-]+)"),
+    re.compile(r"/file/d/([a-zA-Z0-9_-]+)"),
+    re.compile(r"[?&]id=([a-zA-Z0-9_-]+)"),
+]
+
+
+def _extract_drive_id(value: str) -> str:
+    """Accept either a full Google URL or a raw ID; return the ID (or '' if blank)."""
+    v = (value or "").strip()
+    if not v:
+        return ""
+    if "://" not in v and "/" not in v:
+        return v  # already a bare ID
+    for pat in _DRIVE_ID_PATTERNS:
+        m = pat.search(v)
+        if m:
+            return m.group(1)
+    return v  # unknown shape — pass through and let Google API surface the error
+
+
 def get_profiles() -> dict:
-    return {
+    profiles = {
         "ido": {
-            "doc_id": os.environ.get("IDO_GOOGLE_DOC_ID", "").strip(),
-            "folder_id": os.environ.get("IDO_GOOGLE_DRIVE_VIDEO_FOLDER_ID", "").strip(),
+            "doc_id": _extract_drive_id(os.environ.get("IDO_GOOGLE_DOC_ID", "")),
+            "folder_id": _extract_drive_id(os.environ.get("IDO_GOOGLE_DRIVE_VIDEO_FOLDER_ID", "")),
             "label_he": "עידו",
         },
         "hadar": {
-            "doc_id": os.environ.get("HADAR_GOOGLE_DOC_ID", "").strip(),
-            "folder_id": os.environ.get("HADAR_GOOGLE_DRIVE_VIDEO_FOLDER_ID", "").strip(),
+            "doc_id": _extract_drive_id(os.environ.get("HADAR_GOOGLE_DOC_ID", "")),
+            "folder_id": _extract_drive_id(os.environ.get("HADAR_GOOGLE_DRIVE_VIDEO_FOLDER_ID", "")),
             "label_he": "הדר",
         },
     }
+
+    # Optional profile 3 — only added if BOTH IDs are configured.
+    p3_doc = _extract_drive_id(os.environ.get("PROFILE3_GOOGLE_DOC_ID", ""))
+    p3_folder = _extract_drive_id(os.environ.get("PROFILE3_GOOGLE_DRIVE_VIDEO_FOLDER_ID", ""))
+    if p3_doc and p3_folder:
+        profiles["profile3"] = {
+            "doc_id": p3_doc,
+            "folder_id": p3_folder,
+            "label_he": os.environ.get("PROFILE3_LABEL_HE", "").strip() or "פרופיל 3",
+        }
+
+    # Optional profile 4 — only added if BOTH IDs are configured.
+    p4_doc = _extract_drive_id(os.environ.get("PROFILE4_GOOGLE_DOC_ID", ""))
+    p4_folder = _extract_drive_id(os.environ.get("PROFILE4_GOOGLE_DRIVE_VIDEO_FOLDER_ID", ""))
+    if p4_doc and p4_folder:
+        profiles["profile4"] = {
+            "doc_id": p4_doc,
+            "folder_id": p4_folder,
+            "label_he": os.environ.get("PROFILE4_LABEL_HE", "").strip() or "פרופיל 4",
+        }
+
+    return profiles
 
 
 # ---------------------------------------------------------------------------
